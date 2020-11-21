@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 class NamedEntityRecognizer(nn.Module):
     
-    def __init__(self, vocab_size, embedding_dim, number_of_tags)
+    def __init__(self, vocab_size, embedding_dim, number_of_tags):
         super(NamedEntityRecognizer, self).__init__()
         # the Embeddings module is used to store word embeddings and retrieve them using indices
         self.embeddings = nn.Embeddings(vocab_size, embedding_dim)
