@@ -1,3 +1,4 @@
+# This class is suppose to handle the training, saving, loading and testing of your models.
 
 import os
 import torch
