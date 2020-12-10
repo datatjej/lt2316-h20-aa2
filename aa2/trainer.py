@@ -1,4 +1,5 @@
 # This class is suppose to handle the training, saving, loading and testing of your models.
+# You will have to finish train(), test() and load_model() while save_model() is already made (this means you have to create load_model() so that it fits with how models are saved).
 
 import os
 import torch
@@ -41,7 +42,19 @@ class Trainer:
 
     def load_model(self):
         # Finish this function so that it loads a model and return the appropriate variables
-        pass
+        model = NamedEntityRecognizer(*args, **kwargs)
+        optimizer = TheOptimizerClass(*args, **kwargs)
+
+        checkpoint = torch.load(PATH)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+
+        model.eval()
+        # - or -
+        #model.train()
+        pass 
 
 
     def train(self, train_X, train_y, val_X, val_y, model_class, hyperparamaters):
