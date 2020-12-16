@@ -7,21 +7,21 @@ import torch.nn.functional as F
 
 class NamedEntityRecognizer(nn.Module):
     
-    def __init__(self, vocab_size, embedding_dim, number_of_tags):
+    def __init__(self, input_size, hidden_size, output_size, n_layers):
         super(NamedEntityRecognizer, self).__init__()
-        # the Embeddings module is used to store word embeddings and retrieve them using indices
-        self.embeddings = nn.Embeddings(vocab_size, embedding_dim)
+        self.input = nn.Linear(input_size, hidden_size)
         # the LSTM takes the embedded sentences as input
-        self.lstm = nn.LSTM(embedding_dim, lstm_hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, n_layers, batch_first=True)
         # a fully connected linear layer provides the output layer
-        self.output = nn.Linear(lstm_hidden_dim, number_of_tags)
-   
-    def __forward__(self, tensorized_sent):
+        self.output = nn.Linear(hidden_size, output_size)
+  
+
+    def __forward__(self, tensorized_sent, device):
         #apply the embedding layer that maps each token to its embedding
-        embedded_sent = self.embeddings(tensorized_sent) #.view((1, -1)) <-- from PyTorch tutorial, not sure if needed
+        input_sent = self.input(tensorized_sent) #.view((1, -1)) <-- from PyTorch tutorial, not sure if needed
                                                          #Ng: # dim: batch_size x batch_max_len x embedding_dim
         #run the LSTM along the sentences of length batch_max_len
-        out, _ = self.lstm(embedded_sent) #Ng: # dim: batch_size x batch_max_len x lstm_hidden_dim   
+        out, _ = self.lstm(input_sent) #Ng: # dim: batch_size x batch_max_len x lstm_hidden_dim   
         
         #reshape the Variable so that each row contains one token
         out = out.view(-1, out.shape[2])  # dim: batch_size*batch_max_len x lstm_hidden_dim

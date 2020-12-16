@@ -3,12 +3,15 @@
 
 import os
 import torch
-
+import torch.nn as nn
+import torch.optim as optim
+from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_score
 
 class Trainer:
 
 
     def __init__(self, dump_folder="/tmp/aa2_models/"):
+        # create a directory "aa2_models" for storing the models:
         self.dump_folder = dump_folder
         os.makedirs(dump_folder, exist_ok=True)
 
@@ -40,28 +43,132 @@ class Trainer:
         torch.save(save_dict, os.path.join(self.dump_folder, model_name + ".pt"))
 
 
-    def load_model(self):
+    def load_model(self, model_path): #, model, optimizer):
         # Finish this function so that it loads a model and return the appropriate variables
-        model = NamedEntityRecognizer(*args, **kwargs)
-        optimizer = TheOptimizerClass(*args, **kwargs)
+        
+        #model = TheModelClass(*args, **kwargs)
+        #optimizer = TheOptimizerClass(*args, **kwargs)
 
-        checkpoint = torch.load(PATH)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch']
-        loss = checkpoint['loss']
+        checkpoint = torch.load(model_path)
+        #model.load_state_dict(checkpoint['model_state_dict'])
+        #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        #epoch = checkpoint['epoch']
+        #loss = checkpoint['loss']
 
+        return checkpoint #, epoch, loss
+
+
+    def train(self, train_X, train_y, val_X, val_y, model_class, hyperparameters):
+        # Finish this function so that it set up model then trains and saves it.       
+        
+        lr = hyperparameters["learning_rate"]
+        n_layers = hyperparameters["number_layers"]
+        optimizer = hyperparameters["optimizer"]
+        batch_size = hyperparameters["batch_size"]
+        epochs = hyperparameters["epochs"]
+        model_name = hyperparameters["model_name"]
+
+      
+        print("trainx_shape:", train_X.shape)  #train_X_shape: torch.Size([1035, 165])
+        #if len(train_X.shape) == 2:
+        #    train_X = train_X.unsqueeze(2)
+        input_size = 1  # number of features per word
+        sample_size = train_X.shape[1]
+        output_size = 6 # number of ner labels
+        hidden_size = hyperparameters["hidden_size"]
+        
+        # declare device (i.e. GPU) 
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        
+        #create mini batches out of train_X and train_y
+        mini_batches = Batcher(train_X, train_y, device, batch_size=batch_size, max_iter=epochs)
+
+        # initiate model
+        model = model_class(input_size, hidden_size, output_size, n_layers)
+        
+        # move the model to the GPU
+        model.to(device)
+        
+        # all models use same optimizer
+        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+        
+        criterion = nn.BCELoss()
+        epoch = 0
+        for split in mini_batches:
+            # go into training mode
+            model.train()
+            tot_loss = 0
+            for sentence_x, label_y in split:
+                # Since the backward() function accumulates gradients, and you don’t want to mix up gradients between 
+                # minibatches, you have to zero them out at the start of a new minibatch using zero_grad():
+                optimizer.zero_grad()
+                pred = model(sentence_x.float(), device)
+                pred = pred.permute(0, 2, 1)        
+                loss = criterion(pred.float(), label_y).to(device)
+                tot_loss += loss
+                loss.backward()
+                opt.step()
+            print("Total loss in epoch {} is {}.".format(epoch, tot_loss))
+            epoch += 1
+    
         model.eval()
-        # - or -
-        #model.train()
-        pass 
-
-
-    def train(self, train_X, train_y, val_X, val_y, model_class, hyperparamaters):
-        # Finish this function so that it set up model then trains and saves it.
+        y_label = []
+        y_pred = []
+        test_batches = Batcher(val_X, val_y, device, batch_size=batch_size, max_iter=1)
+        for split in test_batches:
+            for sentence, label in split:
+                with torch.no_grad():
+                    pred = model(sentence.float(), device)
+                    for i in range(pred.shape[0]):
+                        pred_s = pred[i]
+                        label_s = label[i]
+                        for j in range(len(pred_s)):
+                            pred_t = int(torch.argmax(pred_s[j]))
+                            label_t = int(label_s[j])
+                            y_pred.append(pred_t)
+                            y_label.append(label_t)
+    
+        scores = {}
+        accuracy = accuracy_score(y_label, y_pred, normalize=True)
+        scores['accuracy'] = accuracy
+        recall = recall_score(y_label, y_pred, average='weighted')
+        scores['recall'] = recall
+        precision = precision_score(y_label, y_pred, average='weighted')
+        scores['precision'] = precision
+        f = f1_score(y_pred, y_label, average='weighted')
+        scores['f1_score'] = f
+        scores['loss'] = int(tot_loss)
+            
+        self.save_model(epoch, model, optimizer, tot_loss, scores, hyperparameters, model_name)
+            
+        print('model:', model_name, 'accuracy:', accuracy, 'precision:', precision, 'recall:', recall, 'f1_score:', f)
+        
         pass
-
 
     def test(self, test_X, test_y, model_class, best_model_path):
         # Finish this function so that it loads a model, test is and print results.
         pass
+
+class Batcher:
+    def __init__(self, X, y, device, batch_size=50, max_iter=None):
+        self.X = X
+        self.y = y
+        self.device = device
+        self.batch_size = batch_size
+        self.max_iter = max_iter
+        self.curr_iter = 0
+        
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        if self.curr_iter == self.max_iter:
+            raise StopIteration
+        permutation = torch.randperm(self.X.size()[0], device=self.device)
+        permX = self.X[permutation]
+        permy = self.y[permutation]
+        splitX = torch.split(permX, self.batch_size)
+        splity = torch.split(permy, self.batch_size)
+        
+        self.curr_iter += 1
+        return zip(splitX, splity)
