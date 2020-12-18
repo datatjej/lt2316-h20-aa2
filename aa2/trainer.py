@@ -102,7 +102,7 @@ class Trainer:
                 # Since the backward() function accumulates gradients, and you don’t want to mix up gradients between 
                 # minibatches, you have to zero them out at the start of a new minibatch using zero_grad():
                 optimizer.zero_grad()
-                pred = model(sentence_x.float(), device)
+                pred = model(sentence_x, device)
                 pred = pred.permute(0, 2, 1)        
                 loss = criterion(pred.float(), label_y).to(device)
                 tot_loss += loss
