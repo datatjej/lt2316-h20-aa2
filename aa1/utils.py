@@ -1,6 +1,5 @@
 
 import torch
-from tqdm import tqdm
 
 def ensure_tensor(item):
     if not torch.is_tensor(item):
@@ -16,7 +15,7 @@ def ensure_gpu(item):
 
 def check_output(items_to_check):
     
-    for item in tqdm(items_to_check):
+    for item in items_to_check:
         ensure_tensor(item)
         ensure_gpu(item)
     
