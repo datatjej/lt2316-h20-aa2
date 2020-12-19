@@ -69,53 +69,63 @@ class Trainer:
         model_name = hyperparameters["model_name"]
 
       
-        print("trainx_shape:", train_X.shape)  #train_X_shape: torch.Size([1035, 165])
-        #if len(train_X.shape) == 2:
-        #    train_X = train_X.unsqueeze(2)
-        input_size = 1  # number of features per word
+        train_X = train_X.unsqueeze(2)
+        train_y = train_y.unsqueeze(2)
+        val_X = val_X.unsqueeze(2)
+        val_y = val_y.unsqueeze(2)
+        print("input_size:", train_X.shape)
+        input_size = train_X.shape[2]  # number of features per word
         sample_size = train_X.shape[1]
         output_size = 6 # number of ner labels
         hidden_size = hyperparameters["hidden_size"]
         
         # declare device (i.e. GPU) 
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
         
         #create mini batches out of train_X and train_y
         mini_batches = Batcher(train_X, train_y, device, batch_size=batch_size, max_iter=epochs)
 
         # initiate model
         model = model_class(input_size, hidden_size, output_size, n_layers)
+        print("model: ", model)
         
         # move the model to the GPU
         model.to(device)
         
         # all models use same optimizer
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+        optimizer = optim.Adam(model.parameters(), lr=lr)
         
-        criterion = nn.BCELoss()
+        # loss function
+        criterion = nn.NLLLoss()
+        
         epoch = 0
         for split in mini_batches:
             # go into training mode
             model.train()
             tot_loss = 0
             for sentence_x, label_y in split:
+                #print("sentence_x.shape(): ", sentence_x.shape) 
+                #print("label_y.shape(): ", label_y.shape)
                 # Since the backward() function accumulates gradients, and you don’t want to mix up gradients between 
                 # minibatches, you have to zero them out at the start of a new minibatch using zero_grad():
                 optimizer.zero_grad()
-                pred = model(sentence_x, device)
-                pred = pred.permute(0, 2, 1)        
+                pred = model(sentence_x.float(), device)
+                print("pred:", pred.shape)
+                pred = pred.permute(0, 2, 1)
+                print("pred after permute: ", pred.shape)
+                label_y = label_y.squeeze(2)
                 loss = criterion(pred.float(), label_y).to(device)
                 tot_loss += loss
                 loss.backward()
-                opt.step()
+                optimizer.step()
             print("Total loss in epoch {} is {}.".format(epoch, tot_loss))
             epoch += 1
     
         model.eval()
         y_label = []
         y_pred = []
-        test_batches = Batcher(val_X, val_y, device, batch_size=batch_size, max_iter=1)
-        for split in test_batches:
+        val_batches = Batcher(val_X, val_y, device, batch_size=batch_size, max_iter=1)
+        for split in val_batches:
             for sentence, label in split:
                 with torch.no_grad():
                     pred = model(sentence.float(), device)
