@@ -1,4 +1,3 @@
-
 import torch
 import plotly.graph_objects as go
 import pandas as pd
@@ -19,6 +18,8 @@ def parallel_coordinates(save_dir, metric="loss"):
         model_dict = torch.load(model_file)
         score_dict = model_dict["scores"]
         score_dict["loss"] = model_dict["loss"]
+        score_dict["loss"] = score_dict["loss"].cpu().detach().numpy()
+        score_dict["loss"] = score_dict["loss"].item()
 
         row = {"model_name":model_dict["model_name"]}
         row.update(model_dict["hyperparamaters"])

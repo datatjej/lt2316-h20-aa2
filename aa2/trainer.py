@@ -10,7 +10,8 @@ from sklearn.metrics import accuracy_score, recall_score, f1_score, precision_sc
 class Trainer:
 
 
-    def __init__(self, dump_folder="/tmp/aa2_models/"):
+    #def __init__(self, dump_folder="/tmp/aa2_models/"):
+    def __init__(self, dump_folder):
         # create a directory "aa2_models" for storing the models:
         self.dump_folder = dump_folder
         os.makedirs(dump_folder, exist_ok=True)
@@ -63,18 +64,17 @@ class Trainer:
         
         lr = hyperparameters["learning_rate"]
         n_layers = hyperparameters["number_layers"]
-        optimizer = hyperparameters["optimizer"]
+        optimizer_choice = hyperparameters["optimizer"]
         batch_size = hyperparameters["batch_size"]
         epochs = hyperparameters["epochs"]
         model_name = hyperparameters["model_name"]
 
-      
         train_X = train_X.unsqueeze(2)
         train_y = train_y.unsqueeze(2)
         val_X = val_X.unsqueeze(2)
         val_y = val_y.unsqueeze(2)
-        print("input_size:", train_X.shape)
-        input_size = train_X.shape[2]  # number of features per word
+        
+        input_size = train_X.shape[2]  # no of features: 1 (POS tags)
         sample_size = train_X.shape[1]
         output_size = 6 # number of ner labels
         hidden_size = hyperparameters["hidden_size"]
@@ -93,7 +93,10 @@ class Trainer:
         model.to(device)
         
         # all models use same optimizer
-        optimizer = optim.Adam(model.parameters(), lr=lr)
+        if optimizer_choice == "adam":
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+        elif optimizer_choice == "sgd":
+            optimizer = optim.SGD(model.parameters(), lr=lr) 
         
         # loss function
         criterion = nn.NLLLoss()
@@ -103,17 +106,13 @@ class Trainer:
             # go into training mode
             model.train()
             tot_loss = 0
-            for sentence_x, label_y in split:
-                #print("sentence_x.shape(): ", sentence_x.shape) 
-                #print("label_y.shape(): ", label_y.shape)
+            for sentence_x, label_y in split: # sentence_x = [32,165,1], label_y = [32,165,1]
                 # Since the backward() function accumulates gradients, and you don’t want to mix up gradients between 
                 # minibatches, you have to zero them out at the start of a new minibatch using zero_grad():
                 optimizer.zero_grad()
-                pred = model(sentence_x.float(), device)
-                print("pred:", pred.shape)
-                pred = pred.permute(0, 2, 1)
-                print("pred after permute: ", pred.shape)
-                label_y = label_y.squeeze(2)
+                pred = model(sentence_x.float(), device) # pred = [32,165,6]
+                #pred = pred.permute(0, 2, 1)  # pred after permute = [32,6,165]
+                #label_y = label_y.squeeze(2)  # label_y after squeeze: [32,165] 
                 loss = criterion(pred.float(), label_y).to(device)
                 tot_loss += loss
                 loss.backward()
@@ -157,6 +156,83 @@ class Trainer:
 
     def test(self, test_X, test_y, model_class, best_model_path):
         # Finish this function so that it loads a model, test is and print results.
+        lr = hyperparameters["learning_rate"]
+        n_layers = hyperparameters["number_layers"]
+        optimizer_choice = hyperparameters["optimizer"]
+        batch_size = hyperparameters["batch_size"]
+        epochs = hyperparameters["epochs"]
+        model_name = hyperparameters["model_name"]
+        
+        print("trainx_shape:", train_X.shape)
+        inputsize = train_X.shape[2]  # = 7, number of features per word
+        samplesize = train_X.shape[1]
+        outputsize = 6 # number of ner labels
+        hiddensize = hyperparameters["hidden_size"]
+        
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        train_batches = Batcher(train_X, train_y, self.device, batch_size=batch_size, max_iter=epochs)
+        model = model_class(inputsize, hiddensize, outputsize, n_layers)
+        model = model.to(self.device)
+        
+        
+        if optimizer_choice == "adam":
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+        elif optimizer_choice == "sgd":
+            optimizer = optim.SGD(model.parameters(), lr=lr) 
+            
+        criterion = nn.NLLLoss()
+        
+        epoch = 0
+        for split in train_batches:
+            model.train()
+            tot_loss = 0
+            for sentence, label in split:
+                optimizer.zero_grad()
+                pred = model(sentence.float(), self.device)
+                pred = pred.permute(0, 2, 1)        
+                loss = criterion(pred.float(), label).to(self.device)
+                tot_loss += loss
+                loss.backward()
+                optimizer.step()
+            print("Total loss in epoch {} is {}.".format(epoch, tot_loss))
+            epoch += 1
+           
+            
+            model.eval()
+            y_label = []
+            y_pred = []
+            test_batches = Batcher(val_X, val_y, self.device, batch_size=batch_size, max_iter=1)
+            for split in test_batches:
+                for sentence, label in split:
+                    with torch.no_grad():
+                        pred = model(sentence.float(), self.device)
+                        for i in range(pred.shape[0]):
+                            pred_s = pred[i]
+                            label_s = label[i]
+                            for j in range(len(pred_s)):
+                                pred_t = int(torch.argmax(pred_s[j]))
+                                label_t = int(label_s[j])
+                                y_pred.append(pred_t)
+                                y_label.append(label_t)
+                     
+    
+            scores = {}
+            accuracy = accuracy_score(y_label, y_pred, normalize=True)
+            scores['accuracy'] = accuracy
+            recall = recall_score(y_label, y_pred, average='weighted')
+            scores['recall'] = recall
+            precision = precision_score(y_label, y_pred, average='weighted')
+            scores['precision'] = precision
+            f = f1_score(y_pred, y_label, average='weighted')
+            scores['f1_score'] = f
+            scores['loss'] = int(tot_loss)
+        
+
+            print('model:', model_name, 'accuracy:', accuracy, 'precision:', precision, 'recall:', recall, 'f1_score:', f)
+
+        
+            self.save_model(epoch, model, optimizer, tot_loss, scores, hyperparameters, model_name)
+
         pass
 
 class Batcher:
